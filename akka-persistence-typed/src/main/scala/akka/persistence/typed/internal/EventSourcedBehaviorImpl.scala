@@ -115,7 +115,8 @@ private[akka] final case class EventSourcedBehaviorImpl[Command, Event, State](
     replication: Option[ReplicationSetup] = None,
     publishEvents: Boolean = true,
     customStashCapacity: Option[Int] = None,
-    replicatedEventInterceptor: Option[ReplicationInterceptor[State, Event]] = None)
+    replicatedEventInterceptor: Option[ReplicationInterceptor[State, Event]] = None,
+    replicatedEventTransformation: Option[(State, EventWithMetadata[Event]) => EventWithMetadata[Event]] = None)
     extends EventSourcedBehavior[Command, Event, State] {
 
   import EventSourcedBehaviorImpl.WriterIdentity
@@ -221,7 +222,8 @@ private[akka] final case class EventSourcedBehaviorImpl[Command, Event, State](
             internalLoggerFactory = () => internalLogger(),
             retentionInProgress = false,
             instrumentation,
-            replicatedEventInterceptor)
+            replicatedEventInterceptor,
+            replicatedEventTransformation)
 
           // needs to accept Any since we also can get messages from the journal
           // not part of the user facing Command protocol
@@ -336,6 +338,10 @@ private[akka] final case class EventSourcedBehaviorImpl[Command, Event, State](
       interceptor: ReplicationInterceptor[State, Event]): EventSourcedBehavior[Command, Event, State] =
     copy(replicatedEventInterceptor = Some(interceptor))
 
+  override def withReplicatedEventTransformation(
+      f: (State, EventWithMetadata[Event]) => EventWithMetadata[Event]): EventSourcedBehavior[Command, Event, State] =
+    copy(replicatedEventTransformation = Some(f))
+
 }
 
 /** Protocol used internally by the eventsourced behaviors. */
@@ -375,7 +381,7 @@ object ReplicatedEventMetadata {
  *                at each location as they are received at different times
  */
 @InternalStableApi
-private[akka] final case class ReplicatedEventMetadata(
+final case class ReplicatedEventMetadata(
     originReplica: ReplicaId,
     originSequenceNr: Long,
     version: VersionVector,
